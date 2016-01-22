@@ -1,0 +1,23 @@
+{
+  "name": "barteljan/pod_console_tools",
+  "license": "MIT",
+  "type": "symfony2-console",
+  "description": "Some helpers for using CocoaPods on the console.",
+  "homepage": "https://github.com/barteljan/Pod-Console-Tools",
+  "require": {
+    "php": ">=5.3.3",
+    "symfony/console": "~3.0",
+    "symfony/process": "~3.0"
+  },
+  "autoload": {
+    "psr-0": {
+      "": "src/"
+    }
+  },
+  "authors": [
+    {
+      "name": "Jan Bartel",
+      "email": "barteljan@yahoo.de"
+    }
+  ]
+}
