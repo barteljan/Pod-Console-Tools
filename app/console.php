@@ -12,9 +12,9 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 // import the Symfony Console Application
 use Symfony\Component\Console\Application;
-use \barteljan\pods\Commands\UpgradePodRepoCommand;
+use \barteljan\pods\Commands\UploadPodRepoCommand;
 
 $app = new Application();
-$app->add(new UpgradePodRepoCommand());
+$app->add(new UploadPodRepoCommand());
 $app->run();
 ?>

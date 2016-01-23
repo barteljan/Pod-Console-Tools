@@ -17,11 +17,11 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
 
-class UpgradePodRepoCommand  extends Command{
+class UploadPodRepoCommand  extends Command{
 
     protected function configure()
     {
-        $this->setName("pod:upgrade")
+        $this->setName("pod:upload")
             ->setDescription("commits, tags and uploads your current local pod-project into your private pod-repo")
             ->setDefinition(array(
                 new InputOption('repo', 'r', InputOption::VALUE_REQUIRED, 'The name of your pod repo'),
@@ -71,6 +71,8 @@ EOT
             return;
         }
 
+
+        $output->writeln("upload pod: ".$path);
         //modifiy version in podfile
         if(!$this->modifyPodfileVersion($input,$output,$force,$path)){
             throw new \Exception("We cannot update your local pods version.\nFailure modifing pod version in repo:".$path."!");
@@ -141,9 +143,85 @@ EOT
     protected function modifyPodfileVersion(InputInterface $input, OutputInterface $output,$force, $path){
 
         $podSpecPath = $this->getPodSpecPathInDirectory($path);
-        //TODO: Hier weiter
-        $output->writeln($podSpecPath);
+
+        $currentVersion = $this->getPodspecVersionFromPath($podSpecPath);
+
+        $output->writeln("Current podspec version is: ".$currentVersion);
+
+        $nextVersion = $this->incrementedVersion($currentVersion);
+
+
+        if(!$force){
+            $questionHelper = $this->getHelper('question');
+            $question = new ConfirmationQuestion("Next podspec version should be: ".$nextVersion." is this correct ? (n)", false);
+            $isCorrect = $questionHelper->ask($input,$output,$question);
+
+            if(!$isCorrect){
+                $question = new Question("Please enter the correct version number or exit to quit: ");
+                $nextVersion = $questionHelper->ask($input,$output,$question);
+                if($nextVersion=="exit"){
+                    throw new \Exception("We cannot update your local pods version.\n User aborted update process!");
+                }
+            }
+        }
+
+        if(!$this->checkVersionNumber($nextVersion)){
+            throw new \Exception("We cannot update your local pods version.\n Version number ".$nextVersion." is not valid");
+        }
+
+        $output->writeln("Next podspec version will be: ".$nextVersion);
+
         return true;
+    }
+
+    protected function checkVersionNumber($versionNumber){
+
+        if(empty($versionNumber)){
+            return false;
+        }
+
+        //check if version number contains other anything except numbers and some dots
+        if (preg_match('/[^0-9.]/', $versionNumber)) {
+            return false;
+        }
+
+        return true;
+    }
+
+
+    protected function getPodspecVersionFromPath($path){
+
+        //find part where our current version is specified
+        $pattern = "/version(\s)*=(\s)*/i";
+        $versionLine = implode(preg_grep($pattern, file($path)));
+        //remove all newlines
+        $versionLine = str_replace("\n","",$versionLine);
+
+        //now extract the version
+        $pattern ='/["\']{1}([0-9.]+)["\']{1}/i';
+        preg_match($pattern,$versionLine,$versionMatches);
+        $version = $versionMatches[1];
+
+        return $version;
+    }
+
+    protected function incrementedVersion($versionString){
+
+        //find last version number
+        $pattern ='/([0-9]+)$/i';
+        preg_match($pattern,$versionString,$matches);
+        $lastVersionNumber = $matches[1];
+        $incrementedLastVersionNumber = $lastVersionNumber+1;
+
+        //find everything but the last number
+        //position of last dot
+        $positionOfLastDot = strrpos($versionString,".");
+        $everthingButTheLastVersionNumber = substr($versionString,0,$positionOfLastDot);
+
+        //add incremented version number seperated by a dot
+        $newVersionString = $everthingButTheLastVersionNumber.".".$incrementedLastVersionNumber;
+
+        return $newVersionString;
     }
 
     protected function getPodSpecPathInDirectory($directoryPath){
@@ -152,6 +230,7 @@ EOT
         $filePath = null;
         foreach (glob($filePattern) as $filename) {
             $filePath = $filename;
+            break;
         }
 
         if(!$filename){
