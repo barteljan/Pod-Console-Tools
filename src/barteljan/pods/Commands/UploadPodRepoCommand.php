@@ -45,6 +45,8 @@ EOT
         $header_style = new OutputFormatterStyle('black', 'white', array('bold'));
         $output->getFormatter()->setStyle('header', $header_style);
 
+        $this->writeHeader($output,"Pod: ".$path);
+
         //check command options
         $repo = $input->getOption("repo");
 
@@ -71,16 +73,44 @@ EOT
             return;
         }
 
-
-        $output->writeln("upload pod: ".$path);
         //modifiy version in podfile
         if(!$this->modifyPodfileVersion($input,$output,$force,$path)){
             throw new \Exception("We cannot update your local pods version.\nFailure modifing pod version in repo:".$path."!");
             return;
         }
 
+        $this->writeHeader($output,"Upload podspec to repo ".$repo);
+
+        $this->uploadPodSpecToRepo($output,$repo);
+
+        $podspecVersion = $this->getPodspecVersionFromPath($this->getPodSpecPathInDirectory($path));
+        $this->writeHeader($output,"Sucessfully uploaded podspec: '".$path."' to version: '".$podspecVersion."'\nto podspec-repo ".$repo."'");
 
         chdir($oldPath);
+    }
+
+    protected function uploadPodSpecToRepo($output,$podSpecRepo){
+        $command = 'pod repo push '.$podSpecRepo." --allow-warnings --verbose";
+        $output->writeln($command);
+        $process = new Process($command);
+
+        $process->setTimeout(3600);
+        $return = $process->run(function ($type, $buffer) {
+            global $output;
+            echo '       '.$buffer;
+        });
+
+        if($return>0){
+            throw new \Exception("We cannot update your local pods version.\n Failure updating podspec version!");
+        }
+    }
+
+    protected function writeHeader(OutputInterface $output,$text){
+        $output->writeln("");
+        $output->writeln("---------------------------------------------");
+        $output->writeln("<header>".$text."</header>");
+        $output->writeln("---------------------------------------------");
+        $output->writeln("");
     }
 
     protected function checkForUncommitedChanges(InputInterface $input, OutputInterface $output,$force){
@@ -89,10 +119,13 @@ EOT
 
         $hasUncommitedFiles = $this->hasUncommitedFiles();
 
+        $this->writeHeader($output,"Commit uncommited changes");
+
         $question = new ConfirmationQuestion('You have uncommited changes in your local commit repo.'."\n"
                                             .'Do you want to commit them ? (n)',false);
 
         if($hasUncommitedFiles && !$force ){
+            $this->printGitStatus($input,$output);
             $shouldICommit = $questionHelper->ask($input,$output,$question);
             if($shouldICommit){
                 $this->commitAllFiles($input,$output,$force);
@@ -116,15 +149,118 @@ EOT
             $message = $questionHelper->ask($input,$output,$question);
         }
 
-        $command = 'git add . && git commit -m "'.$message.'"';
+        $command = 'git add .';
         $output->writeln($command);
         $process = new Process($command);
 
         $process->setTimeout(3600);
-        $process->run(function ($type, $buffer) {
+        $return = $process->run(function ($type, $buffer) {
             global $output;
             echo '       '.$buffer;
         });
+
+        if($return>0){
+            throw new \Exception("We cannot update your local pods version.\nFailure adding all files to git!");
+        }
+
+        $command = 'git commit -m "'.$message.'"';
+        $output->writeln($command);
+        $process = new Process($command);
+
+        $process->setTimeout(3600);
+        $return = $process->run(function ($type, $buffer) {
+            global $output;
+            echo '       '.$buffer;
+        });
+
+        if($return>0){
+            throw new \Exception("We cannot update your local pods version.\nFailure commiting files to git!");
+        }
+    }
+
+    protected function commitTagAndPushCurrentVersion(InputInterface $input,OutputInterface $output,$force,$version){
+
+         $this->writeHeader($output,"Commit new version: ".$version);
+         $this->commitAllFiles($input,$output,$force,"Changed pod version to ".$version);
+         $this->writeHeader($output,"Tag new version: ".$version);
+         $this->tagGitVersion($output,$version);
+         $this->writeHeader($output,"Push new version: ".$version);
+         $this->gitPush($input,$output,$force);
+    }
+
+
+    protected function tagGitVersion(OutputInterface $output,$version){
+        $command = 'git tag '.$version;
+        $output->writeln($command);
+        $process = new Process($command);
+
+        $process->setTimeout(3600);
+        $return = $process->run(function ($type, $buffer) {
+            global $output;
+            echo '       '.$buffer;
+        });
+
+        if($return>0){
+            throw new \Exception("We cannot update your local pods version.\nFailure tagging git with:".$version."!");
+        }
+
+    }
+
+    protected function gitPush(InputInterface $input,OutputInterface $output,$force){
+
+        $questionHelper = $this->getHelper('question');
+
+        $question = new ConfirmationQuestion('Push changes to remote ? (n): ',false);
+
+        if($force || $questionHelper->ask($input,$output,$question)){
+
+            $command = 'git push';
+            $output->writeln($command);
+            $process = new Process($command);
+
+            $process->setTimeout(3600);
+            $return = $process->run(function ($type, $buffer) {
+                global $output;
+                echo '       '.$buffer;
+            });
+
+            if($return>0){
+                throw new \Exception("We cannot update your local pods version.\nFailure tagging pushing repo to remote!");
+            }
+
+            $command = 'git push --tags';
+            $output->writeln($command);
+            $process = new Process($command);
+
+            $process->setTimeout(3600);
+            $return = $process->run(function ($type, $buffer) {
+                global $output;
+                echo '       '.$buffer;
+            });
+
+            if($return>0){
+                throw new \Exception("We cannot update your local pods version.\nFailure tagging pushing tags to remote!");
+            }
+
+        }
+    }
+
+
+    protected function printGitStatus(InputInterface $input, OutputInterface $output){
+        $command = 'git status';
+        $output->writeln($command);
+        $process = new Process($command);
+
+        $process->setTimeout(3600);
+        $return = $process->run(function ($type, $buffer) {
+            global $output;
+            echo '       '.$buffer;
+        });
+
+        if($return>0){
+            throw new \Exception("We cannot update your local pods version.\nCannot output status of git repo!");
+        }
+
     }
 
     protected function hasUncommitedFiles(){
@@ -146,7 +282,7 @@ EOT
 
         $currentVersion = $this->getPodspecVersionFromPath($podSpecPath);
 
-        $output->writeln("Current podspec version is: ".$currentVersion);
+        $this->writeHeader($output,"Current podspec version is: ".$currentVersion);
 
         $nextVersion = $this->incrementedVersion($currentVersion);
 
@@ -160,7 +296,7 @@ EOT
                 $question = new Question("Please enter the correct version number or exit to quit: ");
                 $nextVersion = $questionHelper->ask($input,$output,$question);
                 if($nextVersion=="exit"){
-                    throw new \Exception("We cannot update your local pods version.\n User aborted update process!");
+                    throw new \Exception("We cannot update your local pods version.\nUser aborted update process!");
                 }
             }
         }
@@ -169,7 +305,13 @@ EOT
             throw new \Exception("We cannot update your local pods version.\n Version number ".$nextVersion." is not valid");
         }
 
-        $output->writeln("Next podspec version will be: ".$nextVersion);
+
+        $this->writeHeader($output,"Next podspec version will be: ".$nextVersion);
+
+        $this->writeHeader($output,"Write version to podspec");
+        $this->replaceVersionInPath($currentVersion,$nextVersion,$podSpecPath);
+
+        $this->commitTagAndPushCurrentVersion($input,$output,$force,$nextVersion);
 
         return true;
     }
@@ -203,6 +345,43 @@ EOT
         $version = $versionMatches[1];
 
         return $version;
+    }
+
+
+    public function replaceVersionInPath($oldVersion,$newVersion,$path){
+
+        if(!file_exists($path)){
+            throw new \Exception("We cannot update your local pods version.\n Path :".$path." does not exist");
+        }
+
+        $reading = fopen($path, 'r');
+        $writing = fopen($path.'.tmp', 'a');
+
+        $pattern = '/version(\s)*=(\s)*"'.$oldVersion.'"/i';
+        $versionLine = implode(preg_grep($pattern, file($path)));
+
+        $replaced = false;
+
+        while (!feof($reading)) {
+            $line = fgets($reading);
+
+
+            if ($line == $versionLine) {
+                $line = str_replace($oldVersion,$newVersion,$versionLine);
+                $replaced = true;
+            }
+            fputs($writing, $line);
+
+        }
+        fclose($reading); fclose($writing);
+        // might as well not overwrite the file if we didn't replace anything
+        if ($replaced)
+        {
+            rename($path.'.tmp', $path);
+        } else {
+            unlink($path.'.tmp');
+            throw new \Exception("We cannot update your local pods version.\n Cannot replace version: ".$oldVersion." with ".$newVersion." in ".$path);
+        }
     }
 
     protected function incrementedVersion($versionString){
