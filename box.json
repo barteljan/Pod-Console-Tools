@@ -15,7 +15,7 @@
     }
   ],
   "git-version": "package_version",
-  "main": "bin/pod-lab-tools",
+  "main": "bin/pod-console-tools",
   "output": "pod-tools.phar",
   "stub": true
 }
